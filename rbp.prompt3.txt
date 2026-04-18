@@ -1,0 +1,38 @@
+Here is a comprehensive, highly detailed prompt that encapsulates the evolved architecture of the project. It explicitly details the shift from pre-baked Blender physics to a Native X3D Rigid Body Physics (Chainmail) Simulation.
+You can use this prompt to recreate the project, share the specific architecture with others, or use it as a baseline for generating future Web3D physics tools!
+Prompt Title: Procedural HAnim Humanoid with Native X3D Rigid Body Physics "Chainmail" Cloth (Blender 4.x/5.0)
+Role: Expert Blender Python Developer (4.x/5.0 API) & Web3D/X3D Standards Specialist.
+Objective: Write a complete, standalone Python script for Blender that procedurally generates a rigged, animated female humanoid and exports it to a strictly compliant X3D (HAnim) file. Instead of using Blender's internal physics baker, the script must generate a native X3D Rigid Body Physics network directly within the XML to simulate a dropping "chainmail" poncho in real-time within the browser.
+Step-by-Step Requirements:
+1. Scene Setup & HAnim Skeleton:
+Cleanup: Clear the scene of all objects, collections, and materials. Set timeline to 120 frames.
+Skeleton (LOA4 Standard): Procedurally generate a standard HAnim LOA4 skeleton (~148 joints).
+Bone Roll: Enforce a bone roll = 0 for all bones so local axes are perfectly predictable (Local Y = Up to Tail, Local X = Side, Local Z = Forward/Back).
+Proportions: Create a feminine hourglass figure. Ensure the clavicle/scapula span is wide enough to catch the dropping poncho physically.
+2. Procedural Skin & Geometry:
+Body: Wrap the armature in a procedural watertight skin using bmesh.ops.create_cone aligned to bone vectors. Use varied radii based on bone names (wider hips, defined bust). Apply Voxel Remesh (0.02m) and Smooth modifiers to create a continuous surface.
+Rigging: Bind the skin to the armature using Automatic Weights.
+3. Skeletal Animation (Forward Bend):
+Frames 1-60: Neutral T-Pose (Allows the X3D physics engine time to drop and settle the cloth).
+Frames 61-120: Animate the humanoid bending forward at the waist to touch her toes.
+Mechanics: Because bone roll is 0, bend the spine/sacrum bones forward by rotating around their Local Z-axis. Tilt the pelvis forward, and counter-rotate the thighs backward so the legs remain vertical and feet stay planted. Shift the Root bone backward dynamically to maintain center-of-mass balance.
+4. X3D Native Rigid Body Physics Architecture (The Core Task):
+Bypass Blender's physics simulation entirely. The script must write a custom X3D exporter that constructs a physics node network.
+Include <component name="RigidBodyPhysics" level="2"/> in the X3D header.
+Kinematic Proxies: Inside the exported <HAnimJoint> tags for the Skull, Chest, Waist, Pelvis, and Clavicles, inject a visible/invisible <CollidableShape> (e.g., spheres of varying radii).
+Kinematic Bodies: Create a <RigidBodyCollection gravity="0 0 -9.81">. Register the proxies as <RigidBody mass="0"> so they act as immovable kinematic colliders that push the cloth but fall with the animation.
+5. Procedural Chainmail Poncho (Grid Network):
+Grid Calculation: Using Python, calculate a 12x12 2D grid of coordinates located at Z=1.55m (exactly neck height, above the clavicles).
+Neck Hole: Omit any grid points that fall within a 0.16m radius of the center (so the character's head passes cleanly through).
+Visuals: Generate a visible <Transform> containing a <Shape><Sphere> for every valid grid point.
+Physics Nodes: Generate a <RigidBody> (mass 0.05, with linear/angular damping) and a <CollidableShape><Sphere> for every valid grid point.
+Springs/Links: Generate a <BallJoint> connecting every adjacent node (Right and Bottom neighbors) to form a flexible cloth web.
+Routing: Write <ROUTE> tags connecting the position_changed and orientation_changed fields of the <RigidBody> nodes to the set_translation and set_rotation fields of their visual <Transform> counterparts.
+6. X3D Exporter Rules & Strict Standards:
+Write a custom XML exporter function; do not use Blender's default exporter.
+HAnim Structure: Ensure the root joint has containerField="skeleton" and children use children. Provide <HAnimJoint USE="..."> definitions immediately following the skeleton.
+Skin Export: Extract the mesh coordinates and polygon indices from the generated skin mesh. Place them inside an <IndexedFaceSet> wrapped in the <skin><Shape> tag of the <HAnimHumanoid>.
+Vertex Weights: Map the Blender vertex groups to skinCoordIndex and skinCoordWeight inside the HAnimJoint elements.
+Animation Export: Convert the Blender pose quaternions to Axis-Angle format. Output an <OrientationInterpolator> for every moving bone and route them via a <TimeSensor>.
+Execution Constraints:
+The script must run perfectly upon execution, generating the armature, mesh, animation, and physics calculations via Python math, then save the final standalone .x3d file to the user's home directory.

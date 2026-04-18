@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<X3D profile="Immersive" version="4.0">
+<head>
+  <component name="RigidBodyPhysics" level="2"/>
+</head>
+
+<Scene>
+  <Viewpoint position="0 2 6"/>
+
+  <!-- Physics -->
+  <RigidBodyCollection
+      enabled="true"
+      gravity="0 -9.81 0"
+      iterations="30">
+
+    <CollisionCollection containerField="collider" bounce="0" frictionCoefficients="0.8 0.8"/>
+
+    <!-- Torso -->
+    <RigidBody DEF="TorsoBody" mass="0" fixed="true">
+      <CollidableShape containerField="geometry">
+        <Shape containerField="shape">
+          <Box size="1 2 0.6"/>
+        </Shape>
+      </CollidableShape>
+    </RigidBody>
+
+    <!-- 3x3 cloth -->
+    <!-- Row 1 -->
+    <RigidBody DEF="C00" mass="0.02" position="-0.5 2 0"
+               linearDampingFactor="0.1"
+               angularDampingFactor="0.1">
+      <CollidableShape containerField="geometry">
+        <Shape containerField="shape"><Sphere radius="0.1"/></Shape>
+      </CollidableShape>
+    </RigidBody>
+
+    <RigidBody DEF="C10" mass="0.02" position="0 2 0"
+               linearDampingFactor="0.1"
+               angularDampingFactor="0.1">
+      <CollidableShape containerField="geometry">
+        <Shape containerField="shape"><Sphere radius="0.1"/></Shape>
+      </CollidableShape>
+    </RigidBody>
+
+    <RigidBody DEF="C20" mass="0.02" position="0.5 2 0"
+               linearDampingFactor="0.1"
+               angularDampingFactor="0.1">
+      <CollidableShape containerField="geometry">
+        <Shape containerField="shape"><Sphere radius="0.1"/></Shape>
+      </CollidableShape>
+    </RigidBody>
+
+    <!-- Add remaining 6 bodies similarly (rows at y=1.8 and 1.6) -->
+
+    <!-- Horizontal joints -->
+    <BallJoint body1="C00" body2="C10" anchorPoint="-0.25 2 0"/>
+    <BallJoint body1="C10" body2="C20" anchorPoint="0.25 2 0"/>
+
+    <!-- Vertical joints -->
+    <!--
+    <BallJoint body1="C00" body2="C01" anchorPoint="-0.5 1.9 0"/>
+    -->
+    <!-- etc -->
+
+    <!-- Anchor top row to torso -->
+    <BallJoint body1="C00" body2="TorsoBody" anchorPoint="-0.5 2 0"/>
+    <BallJoint body1="C10" body2="TorsoBody" anchorPoint="0 2 0"/>
+    <BallJoint body1="C20" body2="TorsoBody" anchorPoint="0.5 2 0"/>
+
+  </RigidBodyCollection>
+</Scene>
+</X3D>

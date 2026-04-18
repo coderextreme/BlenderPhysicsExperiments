@@ -1,0 +1,37 @@
+Prompt:
+Role: Expert Blender 4.5 Python Developer & Web3D/X3D Standards Specialist.
+Objective: Write a complete, standalone Python script for Blender (4.x compatible) that procedurally generates a rigged, animated, beautiful "classy female" humanoid, simulates a cloth poncho interaction, and exports the result to a strictly compliant X3D (HAnim) file.
+Specific Requirements:
+HAnim Skeleton (LOA4):
+Generate a full HAnim Level of Articulation 4 skeleton (~148 joints).
+Include full spine (Sacrum to Skull), full hands (Carpals to Distal Phalanges), and full feet.
+Proportions: Adjust bone offsets to create a feminine "hourglass" silhouette (narrower shoulders, wider hips/pelvis).
+Geometry & Skinning:
+Body: Procedurally generate a smooth, watertight skin mesh using bmesh based on typical female realistic proportions. Use radius logic to define volume (e.g., wider bust and hips, tapered wrists/ankles). Make sure it covers the whole armature, the armature should be inside it.
+Face: Generate procedural features (Eyes with pupils, geometric Nose, styled Lips) and parent them rigidly to the Skull bone.
+Hair: Create a voluminous "Updo/Chignon" hairstyle. Ensure the main hair volume sits on top of the skull bone (not inside it) and includes side bangs.  The hair should be attached directly to the skull bone, and should be similar in skin attaching to muscle, not separate from the skull bone.
+Ears: Add ears on both sides of the skull.
+Rigging: Bind the skin to the armature using automatic weights.
+Clothing (Layered Meshes):
+Blouse & Pants: Create separate meshes for a Blouse and Leggings by duplicating the skin geometry, trimming appropriate areas (e.g., remove head/hands for blouse), and inflating them (shrink_fatten) so they sit outside the skin.
+Shoes: Generate high-heel geometry attached to the foot bones.
+Poncho: Create a high-resolution plane with a circular neck hole. The Poncho is dropped onto the humanoid from overhead.  Position it pre-threaded above the skull (Frame 1) to avoid collision errors. Apply a Solidify modifier for thickness and a Cloth modifier.
+Physics & Simulation:
+Apply Collision modifiers to the Skin, Blouse, and Pants with a high thickness_outer (approx 0.04-0.05) to prevents the poncho from clipping through the body.
+Configure Cloth settings for a "Silk/Velvet" feel (high quality steps, angular bending).
+Bake the simulation for 120 frames.
+Animation:
+Frames 1-60: Neutral T-Pose (allow cloth to settle).
+Frames 61-120: Animate the humanoid bending over, rotating their back joints to touch their toes.
+Mechanics: Use cumulative spine curling, pelvic tilt, and thigh counter-rotation to keep legs vertical. Shift the Root bone backward slightly to maintain center-of-mass balance.
+Feet: Feet should remain in shoes and shoes should remain firmly planted on the ground.
+X3D Export (Custom Exporter):
+Do not use the default Blender X3D exporter. Write a custom function to export to .x3d XML format.
+HAnim Structure: Export an HAnimHumanoid containing HAnimJoint nodes.
+Strict Standards: Ensure the root joint has containerField="skeleton" and children have containerField="children".  Also ensure that a USE copy of each joint is placed below the skeleton field.  Each USE joint will have the USE attribute which refers to the DEF attribute in the associate joint, and a containerField attribute with the value "joints".
+Skinning: Export skinCoord, skinCoordIndex, and skinCoordWeight based on the Blender Vertex Groups.
+Vertex Animation: Export the Poncho animation using a CoordinateInterpolator (Vertex Cache) to capture the cloth physics.
+Rigid Animation: Export the Skeleton animation using OrientationInterpolator nodes for every bone.
+Technical Constraints:
+Ensure BMesh lookups are refreshed (ensure_lookup_table()) to prevent IndexErrors.
+The script must run automatically upon execution, cleaning the scene, building the rig, baking physics, and saving the X3D file to the user's home directory.

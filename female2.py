@@ -1,0 +1,724 @@
+import bpy
+import bmesh
+import math
+import os
+import xml.etree.ElementTree as ET
+from mathutils import Vector, Matrix, Euler
+
+# ------------------------------------------------------------------------
+# CONFIGURATION
+# ------------------------------------------------------------------------
+EXPORT_FILENAME = "procedural_hanim_female.x3d"
+TOTAL_FRAMES = 120
+SETTLE_FRAMES = 40
+SUBDIV_LEVELS = 2
+
+# HAnim Naming Standards
+H_ROOT = "hanim_HumanoidRoot"
+H_SACRUM = "hanim_sacrum"
+H_SPINE_LOW = "hanim_vl5"
+H_SPINE_MID = "hanim_vt10"
+H_SPINE_HIGH = "hanim_vc7"
+H_SKULL = "hanim_skull"
+H_L_HIP = "hanim_l_hip"
+H_L_KNEE = "hanim_l_knee"
+H_L_ANKLE = "hanim_l_talocrural"
+H_R_HIP = "hanim_r_hip"
+H_R_KNEE = "hanim_r_knee"
+H_R_ANKLE = "hanim_r_talocrural"
+H_L_CLAVICLE = "hanim_l_sternoclavicular"
+H_L_SHOULDER = "hanim_l_shoulder"
+H_L_ELBOW = "hanim_l_elbow"
+H_L_WRIST = "hanim_l_wrist"
+H_R_CLAVICLE = "hanim_r_sternoclavicular"
+H_R_SHOULDER = "hanim_r_shoulder"
+H_R_ELBOW = "hanim_r_elbow"
+H_R_WRIST = "hanim_r_wrist"
+
+# ------------------------------------------------------------------------
+# UTILITIES
+# ------------------------------------------------------------------------
+
+def clean_scene():
+    """Wipes the scene completely clean."""
+    if bpy.context.active_object and bpy.context.active_object.mode != 'OBJECT':
+        bpy.ops.object.mode_set(mode='OBJECT')
+
+    bpy.ops.object.select_all(action='SELECT')
+    bpy.ops.object.delete(use_global=False)
+
+    # Purge data blocks
+    for block in bpy.data.meshes: bpy.data.meshes.remove(block)
+    for block in bpy.data.armatures: bpy.data.armatures.remove(block)
+    for block in bpy.data.actions: bpy.data.actions.remove(block)
+    for block in bpy.data.materials: bpy.data.materials.remove(block)
+
+    bpy.context.scene.frame_start = 1
+    bpy.context.scene.frame_end = TOTAL_FRAMES
+    bpy.context.scene.render.fps = 24
+
+def get_bone_head_tail(arm_obj, bone_name):
+    """Gets world-space head and tail of a pose bone."""
+    bone = arm_obj.pose.bones[bone_name]
+    mat = arm_obj.matrix_world
+    return mat @ bone.head, mat @ bone.tail
+
+# ------------------------------------------------------------------------
+# 1. SKELETON GENERATION
+# ------------------------------------------------------------------------
+
+def create_skeleton():
+    bpy.ops.object.armature_add(enter_editmode=True)
+    arm_obj = bpy.context.object
+    arm_obj.name = "HAnim_Armature"
+    amt = arm_obj.data
+    amt.name = "HAnim_Skeleton"
+
+    bpy.ops.armature.select_all(action='SELECT')
+    bpy.ops.armature.delete()
+
+    # Feminine Proportions
+    hips_width = 0.17
+    shoulders_width = 0.14
+
+    z_ankle = 0.1
+    z_knee = 0.55
+    z_hip = 0.95
+    z_waist = 1.1
+    z_chest = 1.35
+    z_neck = 1.45
+    z_head = 1.70
+
+    def add_bone(name, head, tail, parent_name=None):
+        bone = amt.edit_bones.new(name)
+        bone.head = head
+        bone.tail = tail
+        if parent_name and parent_name in amt.edit_bones:
+            bone.parent = amt.edit_bones[parent_name]
+            bone.use_connect = True
+        return bone
+
+    # Spine
+    add_bone(H_ROOT, (0, 0, z_hip), (0, 0, z_hip + 0.05))
+    add_bone(H_SACRUM, (0, 0, z_hip), (0, 0, z_waist), H_ROOT)
+    add_bone(H_SPINE_LOW, (0, 0, z_waist), (0, 0, z_chest), H_SACRUM)
+    add_bone(H_SPINE_MID, (0, 0, z_chest), (0, 0, z_neck), H_SPINE_LOW)
+    add_bone(H_SPINE_HIGH, (0, 0, z_neck), (0, 0, z_neck + 0.05), H_SPINE_MID)
+    add_bone(H_SKULL, (0, 0, z_neck + 0.05), (0, 0, z_head), H_SPINE_HIGH)
+
+    # Legs
+    l_hip = add_bone(H_L_HIP, (hips_width, 0, z_hip-0.05), (hips_width, 0, z_knee), H_SACRUM)
+    l_hip.use_connect = False
+    add_bone(H_L_KNEE, (hips_width, 0, z_knee), (hips_width, 0, z_ankle), H_L_HIP)
+    add_bone(H_L_ANKLE, (hips_width, 0, z_ankle), (hips_width, -0.12, 0.0), H_L_KNEE)
+
+    r_hip = add_bone(H_R_HIP, (-hips_width, 0, z_hip-0.05), (-hips_width, 0, z_knee), H_SACRUM)
+    r_hip.use_connect = False
+    add_bone(H_R_KNEE, (-hips_width, 0, z_knee), (-hips_width, 0, z_ankle), H_R_HIP)
+    add_bone(H_R_ANKLE, (-hips_width, 0, z_ankle), (-hips_width, -0.12, 0.0), H_R_KNEE)
+
+    # Arms
+    l_clav = add_bone(H_L_CLAVICLE, (0.02, 0, z_neck-0.05), (shoulders_width, 0, z_neck-0.02), H_SPINE_MID)
+    l_clav.use_connect = False
+    l_shldr = add_bone(H_L_SHOULDER, (shoulders_width, 0, z_neck-0.02), (shoulders_width + 0.25, 0, z_neck-0.02), H_L_CLAVICLE)
+    l_elbow = add_bone(H_L_ELBOW, (shoulders_width + 0.25, 0, z_neck-0.02), (shoulders_width + 0.5, 0, z_neck-0.02), H_L_SHOULDER)
+    add_bone(H_L_WRIST, (shoulders_width + 0.5, 0, z_neck-0.02), (shoulders_width + 0.6, 0, z_neck-0.02), H_L_ELBOW)
+
+    r_clav = add_bone(H_R_CLAVICLE, (-0.02, 0, z_neck-0.05), (-shoulders_width, 0, z_neck-0.02), H_SPINE_MID)
+    r_clav.use_connect = False
+    r_shldr = add_bone(H_R_SHOULDER, (-shoulders_width, 0, z_neck-0.02), (-shoulders_width - 0.25, 0, z_neck-0.02), H_R_CLAVICLE)
+    r_elbow = add_bone(H_R_ELBOW, (-shoulders_width - 0.25, 0, z_neck-0.02), (-shoulders_width - 0.5, 0, z_neck-0.02), H_R_SHOULDER)
+    add_bone(H_R_WRIST, (-shoulders_width - 0.5, 0, z_neck-0.02), (-shoulders_width - 0.6, 0, z_neck-0.02), H_R_ELBOW)
+
+    # IK Targets
+    add_bone("IK_L_Foot", (hips_width, 0, 0), (hips_width, -0.1, 0), None)
+    add_bone("IK_R_Foot", (-hips_width, 0, 0), (-hips_width, -0.1, 0), None)
+
+    bpy.ops.object.mode_set(mode='OBJECT')
+    return arm_obj
+
+# ------------------------------------------------------------------------
+# 2. PROCEDURAL BODY MESH
+# ------------------------------------------------------------------------
+
+def create_body_mesh(arm_obj):
+    mesh = bpy.data.meshes.new("Body_Mesh")
+    obj = bpy.data.objects.new("Body", mesh)
+    bpy.context.collection.objects.link(obj)
+
+    bm = bmesh.new()
+
+    def trace_bone(bone_name, prev_vert=None):
+        head, tail = get_bone_head_tail(arm_obj, bone_name)
+        if prev_vert is None:
+            v_head = bm.verts.new(head)
+        else:
+            v_head = prev_vert
+        v_tail = bm.verts.new(tail)
+        bm.edges.new((v_head, v_tail))
+        return v_tail
+
+    # Skeleton Tracing
+    v = trace_bone(H_SACRUM)
+    v = trace_bone(H_SPINE_LOW, v)
+    v = trace_bone(H_SPINE_MID, v)
+    v = trace_bone(H_SPINE_HIGH, v)
+    trace_bone(H_SKULL, v)
+
+    # Legs
+    hl, tl = get_bone_head_tail(arm_obj, H_L_HIP)
+    v_l_hip = bm.verts.new(hl)
+    v = trace_bone(H_L_HIP, v_l_hip)
+    v = trace_bone(H_L_KNEE, v)
+    trace_bone(H_L_ANKLE, v)
+
+    hr, tr = get_bone_head_tail(arm_obj, H_R_HIP)
+    v_r_hip = bm.verts.new(hr)
+    v = trace_bone(H_R_HIP, v_r_hip)
+    v = trace_bone(H_R_KNEE, v)
+    trace_bone(H_R_ANKLE, v)
+
+    # Arms
+    hls, tls = get_bone_head_tail(arm_obj, H_L_SHOULDER)
+    v_l_sh = bm.verts.new(hls)
+    v = trace_bone(H_L_SHOULDER, v_l_sh)
+    v = trace_bone(H_L_ELBOW, v)
+    trace_bone(H_L_WRIST, v)
+
+    hrs, trs = get_bone_head_tail(arm_obj, H_R_SHOULDER)
+    v_r_sh = bm.verts.new(hrs)
+    v = trace_bone(H_R_SHOULDER, v_r_sh)
+    v = trace_bone(H_R_ELBOW, v)
+    trace_bone(H_R_WRIST, v)
+
+    # Link hips/shoulders to spine
+    spine_base_v = [v for v in bm.verts if abs(v.co.z - 0.95) < 0.1][0]
+    bm.edges.new((spine_base_v, v_l_hip))
+    bm.edges.new((spine_base_v, v_r_hip))
+
+    spine_chest_v = [v for v in bm.verts if abs(v.co.z - 1.4) < 0.1][0]
+    bm.edges.new((spine_chest_v, v_l_sh))
+    bm.edges.new((spine_chest_v, v_r_sh))
+
+    bm.to_mesh(mesh)
+    bm.free()
+
+    # Skin Modifier Setup
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+
+    skin_mod = obj.modifiers.new(name="Skin", type='SKIN')
+    skin_mod.use_smooth_shade = True
+
+    sub = obj.modifiers.new(name="Subsurf", type='SUBSURF')
+    sub.levels = SUBDIV_LEVELS
+    sub.render_levels = SUBDIV_LEVELS
+
+    # Edit radii in Edit Mode
+    bpy.ops.object.mode_set(mode='EDIT')
+    bm = bmesh.from_edit_mesh(mesh)
+    bm.verts.ensure_lookup_table()
+    layer = bm.verts.layers.skin.verify()
+
+    for v in bm.verts:
+        rad = 0.05
+        z = v.co.z
+        if z < 0.2: rad = 0.06
+        elif z < 0.6: rad = 0.09
+        elif z < 1.0: rad = 0.15
+        elif z < 1.3: rad = 0.13
+        elif z < 1.5: rad = 0.14
+        elif z > 1.6: rad = 0.12
+        if abs(v.co.x) > 0.2: rad = 0.05
+
+        v[layer].radius = (rad, rad)
+
+    bmesh.update_edit_mesh(mesh)
+
+    # Switch mode and convert to mesh
+    bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.ops.object.select_all(action='DESELECT')
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+
+    # Apply Modifiers
+    bpy.ops.object.convert(target='MESH')
+
+    # Fix Normals
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.mesh.normals_make_consistent(inside=False)
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    # Add Bun
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.08, location=(0, -0.05, 1.85))
+    bun = bpy.context.object
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.join()
+
+    # Parent to Armature
+    obj.parent = arm_obj
+    mod = obj.modifiers.new(type='ARMATURE', name="Armature")
+    mod.object = arm_obj
+
+    # Weighting
+    bpy.ops.object.select_all(action='DESELECT')
+    obj.select_set(True)
+    arm_obj.select_set(True)
+    bpy.context.view_layer.objects.active = arm_obj
+    bpy.ops.object.parent_set(type='ARMATURE_AUTO')
+
+    return obj
+
+# ------------------------------------------------------------------------
+# 3. CLOTHING & PHYSICS
+# ------------------------------------------------------------------------
+
+def add_clothing_and_physics(body_obj):
+    # Collision Modifier (Blender 4.x API)
+    coll = body_obj.modifiers.new(type='COLLISION', name='Collision')
+
+    # Access the settings object explicitly
+    c_settings = coll.settings
+    c_settings.thickness_outer = 0.03
+    c_settings.thickness_inner = 0.02
+    c_settings.damping = 0.6
+    c_settings.friction_factor = 0.6
+
+    # Poncho Grid
+    bpy.ops.mesh.primitive_grid_add(x_subdivisions=45, y_subdivisions=45, size=1.8, location=(0, 0, 1.6))
+    poncho = bpy.context.object
+    poncho.name = "Poncho"
+
+    # Cut Neck
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='DESELECT')
+    bm = bmesh.from_edit_mesh(poncho.data)
+    bm.verts.ensure_lookup_table()
+    for v in bm.verts:
+        if v.co.length < 0.15:
+            v.select = True
+    bpy.ops.mesh.delete(type='VERT')
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    # Rotate
+    poncho.rotation_euler = (0, 0, math.radians(45))
+    bpy.ops.object.transform_apply(rotation=True, scale=True)
+
+    # Cloth Modifier
+    cloth_mod = poncho.modifiers.new(type='CLOTH', name='Cloth')
+    pset = cloth_mod.settings
+    pset.quality = 6
+    pset.mass = 0.4
+    pset.tension_stiffness = 15
+    pset.compression_stiffness = 15
+    pset.shear_stiffness = 5
+    pset.bending_stiffness = 0.2
+
+    # FIX: Access collision_settings through the cloth modifier settings
+    coll_set = cloth_mod.collision_settings
+    coll_set.use_self_collision = True
+    coll_set.self_distance_min = 0.02
+    coll_set.distance_min = 0.03
+
+    # Material
+    mat = bpy.data.materials.new(name="PonchoMat")
+    mat.diffuse_color = (0.8, 0.2, 0.2, 1)
+    poncho.data.materials.append(mat)
+
+    return poncho
+
+# ------------------------------------------------------------------------
+# 4. ANIMATION & IK
+# ------------------------------------------------------------------------
+
+def setup_animation_and_ik(arm_obj):
+    bpy.context.view_layer.objects.active = arm_obj
+    bpy.ops.object.mode_set(mode='POSE')
+    bones = arm_obj.pose.bones
+
+    # IK
+    c_l = bones[H_L_KNEE].constraints.new('IK')
+    c_l.target = arm_obj
+    c_l.subtarget = "IK_L_Foot"
+    c_l.chain_count = 2
+
+    c_r = bones[H_R_KNEE].constraints.new('IK')
+    c_r.target = arm_obj
+    c_r.subtarget = "IK_R_Foot"
+    c_r.chain_count = 2
+
+    def key_bone(b_name, frame):
+        b = bones[b_name]
+        b.keyframe_insert(data_path="location", frame=frame)
+        b.keyframe_insert(data_path="rotation_euler", frame=frame)
+
+    # 1. T-Pose with planted feet
+    l_ankle_head = arm_obj.matrix_world @ bones[H_L_ANKLE].head
+    r_ankle_head = arm_obj.matrix_world @ bones[H_R_ANKLE].head
+
+    bones["IK_L_Foot"].location = arm_obj.matrix_world.inverted() @ l_ankle_head
+    bones["IK_R_Foot"].location = arm_obj.matrix_world.inverted() @ r_ankle_head
+
+    key_bone("IK_L_Foot", 1)
+    key_bone("IK_R_Foot", 1)
+    key_bone(H_ROOT, 1)
+
+    bones[H_L_SHOULDER].rotation_euler = (0, 0, 0)
+    bones[H_R_SHOULDER].rotation_euler = (0, 0, 0)
+    key_bone(H_L_SHOULDER, 1)
+    key_bone(H_R_SHOULDER, 1)
+
+    # 2. Settle (Frame 40)
+    key_bone("IK_L_Foot", SETTLE_FRAMES)
+    key_bone("IK_R_Foot", SETTLE_FRAMES)
+    key_bone(H_ROOT, SETTLE_FRAMES)
+    key_bone(H_SACRUM, SETTLE_FRAMES)
+    key_bone(H_SPINE_LOW, SETTLE_FRAMES)
+    key_bone(H_L_SHOULDER, SETTLE_FRAMES)
+    key_bone(H_R_SHOULDER, SETTLE_FRAMES)
+
+    # 3. Toe Touch (Frame 120)
+    bones[H_ROOT].location.y -= 0.4
+    bones[H_ROOT].location.z -= 0.2
+
+    bones[H_SACRUM].rotation_mode = 'XYZ'
+    bones[H_SPINE_LOW].rotation_mode = 'XYZ'
+    bones[H_SACRUM].rotation_euler.x = math.radians(45)
+    bones[H_SPINE_LOW].rotation_euler.x = math.radians(45)
+
+    bones[H_L_SHOULDER].rotation_euler.z = math.radians(80)
+    bones[H_L_SHOULDER].rotation_euler.y = math.radians(10)
+    bones[H_R_SHOULDER].rotation_euler.z = math.radians(-80)
+    bones[H_R_SHOULDER].rotation_euler.y = math.radians(-10)
+
+    key_bone(H_ROOT, TOTAL_FRAMES)
+    key_bone(H_SACRUM, TOTAL_FRAMES)
+    key_bone(H_SPINE_LOW, TOTAL_FRAMES)
+    key_bone(H_L_SHOULDER, TOTAL_FRAMES)
+    key_bone(H_R_SHOULDER, TOTAL_FRAMES)
+    key_bone("IK_L_Foot", TOTAL_FRAMES)
+    key_bone("IK_R_Foot", TOTAL_FRAMES)
+
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+# ------------------------------------------------------------------------
+# 5. X3D EXPORT
+# ------------------------------------------------------------------------
+
+def export_to_x3d(filepath, arm_obj, body_obj, poncho_obj):
+    """
+    Rewritten exporter:
+      - Exports skin coordinates and vertex weights using the SAME evaluated mesh.
+      - Emits joint centers and animations in armature-local space.
+      - Converts Blender (Z-up) -> X3D (Y-up) consistently for all exported vectors.
+      - Adds sanity checks for indices and weight sums.
+    """
+    print(f"Baking and Exporting X3D to {filepath}...")
+
+    def vec_to_x3d_tuple(v):
+        # Input: Vector in armature-local space (Blender coords)
+        # Output: tuple (x,y,z) in X3D axes (x, z, -y) matching previous convention
+        return (v.x, v.z, -v.y)
+
+    def vec_str(v):
+        x, y, z = vec_to_x3d_tuple(v)
+        return f"{x:.6f} {y:.6f} {z:.6f}"
+
+    def rot_str(quat):
+        # quat is a Blender quaternion in armature-local space
+        axis, angle = quat.to_axis_angle()
+        ax = vec_to_x3d_tuple(axis)
+        return f"{ax[0]:.6f} {ax[1]:.6f} {ax[2]:.6f} {angle:.6f}"
+
+    root = ET.Element('X3D', profile='Full', version='3.3')
+    head = ET.SubElement(root, 'head')
+    ET.SubElement(head, 'component', name='HAnim', level='3')
+    ET.SubElement(head, 'meta', name='generator', content='Blender Python Script (fixed exporter)')
+    scene = ET.SubElement(root, 'Scene')
+
+    hanim = ET.SubElement(scene, 'HAnimHumanoid', DEF='FemaleFigure', name='FemaleFigure')
+
+    # --- Prepare evaluated mesh (with modifiers applied) for the body ---
+    bpy.context.scene.frame_set(1)  # export rest/T-pose
+    dg = bpy.context.evaluated_depsgraph_get()
+    eval_body = body_obj.evaluated_get(dg)
+    eval_mesh = eval_body.to_mesh()  # evaluated mesh (modifiers applied)
+    if not eval_mesh:
+        raise RuntimeError("Failed to obtain evaluated mesh for body_obj")
+
+    # Build coordinate list in armature-local space (so bones/joints also in the same space)
+    arm_world_inv = arm_obj.matrix_world.inverted()
+    coord_points_list = []
+    for v in eval_mesh.vertices:
+        world_co = eval_body.matrix_world @ v.co
+        arm_local = arm_world_inv @ world_co
+        coord_points_list.append(arm_local)
+
+    # Convert coordinates to X3D string list
+    coord_points_strs = [vec_str(p) for p in coord_points_list]
+
+    print(f"Exported {len(coord_points_list)} skin vertices (evaluated mesh, armature-local).")
+
+    # --- Extract vertex weights from the same evaluated mesh vertices ---
+    # Map: vertex_index -> {group_name: weight}
+    vertex_weights = {}
+    # Use the original object's vertex_groups (group names), they are the authoritative map
+    vg_names = [vg.name for vg in body_obj.vertex_groups]
+
+    for v_idx, v in enumerate(eval_mesh.vertices):
+        vertex_weights[v_idx] = {}
+        total_w = 0.0
+        # Each evaluated vertex has groups with indices mapped to original vertex groups
+        for g in v.groups:
+            grp_index = g.group
+            weight = g.weight
+            if grp_index < len(vg_names):
+                name = vg_names[grp_index]
+                # skip IK helper groups (if present)
+                if "IK_" in name or name.startswith("IK"):
+                    continue
+                # store and sum
+                vertex_weights[v_idx][name] = vertex_weights[v_idx].get(name, 0.0) + weight
+                total_w += weight
+        # Normalize per-vertex weights if they sum > 0
+        if total_w > 1e-6:
+            for k in list(vertex_weights[v_idx].keys()):
+                vertex_weights[v_idx][k] /= total_w
+        else:
+            # Leave empty mapping for unweighted verts
+            vertex_weights[v_idx] = {}
+
+    # Quick debug check of first vertex weight sum
+    if 0 in vertex_weights:
+        s = sum(vertex_weights[0].values())
+        print(f"Sample vertex 0 weight sum after normalization: {s:.6f}")
+
+    # --- Create skin Shape under HAnimHumanoid.skin ---
+    skin_transform = ET.SubElement(hanim, 'Transform', containerField='skin')
+    skin_shape = ET.SubElement(skin_transform, 'Shape')
+    skin_app = ET.SubElement(skin_shape, 'Appearance')
+    ET.SubElement(skin_app, 'Material', diffuseColor='0.9 0.75 0.65')
+    skin_ifs = ET.SubElement(skin_shape, 'IndexedFaceSet', solid='true', creaseAngle="3.14")
+
+    # Build coordIndex from evaluated mesh polygons (the evaluated mesh topology)
+    coord_idx_chunks = []
+    for poly in eval_mesh.polygons:
+        inds = [str(i) for i in poly.vertices]
+        inds.append("-1")
+        coord_idx_chunks.append(" ".join(inds))
+    skin_ifs.set('coordIndex', " ".join(coord_idx_chunks))
+
+    # Create Coordinate node DEF=SkinCoord with points from coord_points_strs
+    ET.SubElement(skin_ifs, 'Coordinate', DEF='SkinCoord', point=" ".join(coord_points_strs))
+
+    # --- Build joint hierarchy and per-joint skinCoordIndex/skinCoordWeight ---
+    bone_defs = {}
+    first_joint = True
+    all_joint_defs_order = []
+
+    # want to iterate armature bones in hierarchical order: use arm_obj.data.bones
+    def build_joints_recursive(bone, parent_elem):
+        nonlocal first_joint
+        name = bone.name
+        if "IK" in name:  # Skip IK helper bones entirely
+            return
+
+        # A DEF name safe for X3D (convert slashes/spaces)
+        joint_def = f"hanim_{name.replace(' ', '_').replace('/', '_')}"
+        bone_defs[name] = joint_def
+        all_joint_defs_order.append(joint_def)
+
+        # bone.head is in armature-local coordinates already
+        center_arm_local = bone.head  # Vector in armature-local
+
+        # Build lists of indices and weights for this bone from vertex_weights
+        skin_coord_indices = []
+        skin_coord_weights = []
+        for v_idx, wdict in vertex_weights.items():
+            w = wdict.get(name, 0.0)
+            if w > 1e-4:
+                skin_coord_indices.append(str(v_idx))
+                skin_coord_weights.append(f"{w:.6f}")
+
+        # Sanity check: ensure indices are within the range of exported coords
+        if skin_coord_indices:
+            max_index = max(int(i) for i in skin_coord_indices)
+            if max_index >= len(coord_points_list):
+                raise RuntimeError(f"Joint {name} has skinCoordIndex {max_index} >= exported vertex count {len(coord_points_list)}")
+
+        # Build joint attributes: DEF, name, center (converted to X3D order)
+        attrs = {
+            'DEF': joint_def,
+            'name': name,
+            'center': vec_str(center_arm_local)
+        }
+        if first_joint:
+            attrs['containerField'] = 'skeleton'
+            first_joint = False
+
+        if skin_coord_indices:
+            attrs['skinCoordIndex'] = " ".join(skin_coord_indices)
+            attrs['skinCoordWeight'] = " ".join(skin_coord_weights)
+
+        joint_elem = ET.SubElement(parent_elem, 'HAnimJoint', **attrs)
+
+        # Recurse children (armature bones has children in armature-local)
+        for ch in bone.children:
+            build_joints_recursive(ch, joint_elem)
+
+    # Start recursion at root bone(s). Use H_ROOT if present; otherwise every root bone
+    root_bone = arm_obj.data.bones.get(H_ROOT)
+    if root_bone:
+        build_joints_recursive(root_bone, hanim)
+    else:
+        # fallback: iterate bones with no parent
+        for b in arm_obj.data.bones:
+            if b.parent is None:
+                build_joints_recursive(b, hanim)
+
+    # Add USE references for joints as HAnimHumanoid children (joints container)
+    for jd in all_joint_defs_order:
+        ET.SubElement(hanim, 'HAnimJoint', USE=jd, containerField='joints')
+
+    # Add final skinCoord reference as a child of HAnimHumanoid (same DEF used above)
+    ET.SubElement(hanim, 'Coordinate', USE='SkinCoord', containerField='skinCoord')
+
+    # --- Animation export (rotations + translations) ---
+    # We'll sample each frame and produce per-joint OrientationInterpolator & PositionInterpolator
+    anim_data = {b.name: [] for b in arm_obj.pose.bones if "IK" not in b.name}
+    translation_data = {b.name: [] for b in arm_obj.pose.bones if "IK" not in b.name}
+
+    times = []
+    for f in range(1, TOTAL_FRAMES + 1):
+        bpy.context.scene.frame_set(f)
+        dg = bpy.context.evaluated_depsgraph_get()
+        eval_arm = arm_obj.evaluated_get(dg)
+
+        # fraction time
+        times.append((f - 1) / max(1, (TOTAL_FRAMES - 1)))
+
+        for b in eval_arm.pose.bones:
+            if "IK" in b.name:
+                continue
+            # compute local matrix relative to parent (both are in armature object space)
+            if b.parent:
+                local_mat = b.parent.matrix.inverted_safe() @ b.matrix
+            else:
+                # bone's matrix is in armature space; we want its transform relative to armature object
+                # but for PositionInterpolator/OrientationInterpolator we'll store the bone transform in armature-local
+                local_mat = b.matrix.copy()
+
+            # Extract rotation (quaternion) and translation in armature-local units
+            q = local_mat.to_quaternion()
+            t = local_mat.to_translation()
+            anim_data[b.name].append(q)
+            translation_data[b.name].append(t)
+
+    # Make time key string
+    time_str = " ".join([f"{t:.6f}" for t in times])
+
+    # Emit interpolators & ROUTEs
+    for b_name, quats in anim_data.items():
+        if b_name not in bone_defs:
+            # bone not part of HAnim export (likely IK helper), skip
+            continue
+        kv_str = " ".join([rot_str(q) for q in quats])
+        oi = ET.SubElement(scene, 'OrientationInterpolator', DEF=f"OI_{b_name}", key=time_str, keyValue=kv_str)
+        ET.SubElement(scene, 'ROUTE', fromNode=f"OI_{b_name}", fromField='value_changed', toNode=bone_defs[b_name], toField='rotation')
+
+        trans_list = translation_data[b_name]
+        trans_str = " ".join([vec_str(t) for t in trans_list])
+        pi = ET.SubElement(scene, 'PositionInterpolator', DEF=f"PI_{b_name}", key=time_str, keyValue=trans_str)
+        ET.SubElement(scene, 'ROUTE', fromNode=f"PI_{b_name}", fromField='value_changed', toNode=bone_defs[b_name], toField='translation')
+
+    # TimeSensor and ROUTEs hooking up
+    timer = ET.SubElement(scene, 'TimeSensor', DEF='Timer', cycleInterval=str(TOTAL_FRAMES / bpy.context.scene.render.fps), loop='true')
+    for b_name in anim_data.keys():
+        if b_name in bone_defs:
+            ET.SubElement(scene, 'ROUTE', fromNode='Timer', fromField='fraction_changed', toNode=f"OI_{b_name}", toField='set_fraction')
+            ET.SubElement(scene, 'ROUTE', fromNode='Timer', fromField='fraction_changed', toNode=f"PI_{b_name}", toField='set_fraction')
+
+    # --- Export Poncho mesh and its CoordinateInterpolator animation (unchanged approach but consistent axes) ---
+    # Sample poncho first frame in world space (we'll export poncho points in world coordinates converted to X3D)
+    poncho_coords = []
+    dg = bpy.context.evaluated_depsgraph_get()
+    eval_poncho = poncho_obj.evaluated_get(dg)
+    me = eval_poncho.to_mesh()
+    if me is None:
+        raise RuntimeError("Failed to obtain evaluated mesh for poncho")
+    poncho_first = []
+    for v in me.vertices:
+        world_co = eval_poncho.matrix_world @ v.co
+        # Convert world coords to X3D axes directly
+        p = Vector((world_co.x, world_co.y, world_co.z))
+        poncho_first.append(f"{p.x:.6f} {p.z:.6f} {-p.y:.6f}")
+    eval_poncho.to_mesh_clear()
+
+    # Sample every frame
+    poncho_frames = []
+    for f in range(1, TOTAL_FRAMES + 1):
+        bpy.context.scene.frame_set(f)
+        dg = bpy.context.evaluated_depsgraph_get()
+        eval_poncho = poncho_obj.evaluated_get(dg)
+        me = eval_poncho.to_mesh()
+        frame_points = []
+        for v in me.vertices:
+            world_co = eval_poncho.matrix_world @ v.co
+            frame_points.append(f"{world_co.x:.6f} {world_co.z:.6f} {-world_co.y:.6f}")
+        poncho_frames.append(" ".join(frame_points))
+        eval_poncho.to_mesh_clear()
+
+    # Poncho geometry: create standalone shape (outside HAnim)
+    trans = ET.SubElement(scene, 'Transform')
+    shape = ET.SubElement(trans, 'Shape')
+    app = ET.SubElement(shape, 'Appearance')
+    ET.SubElement(app, 'Material', diffuseColor='0.8 0.2 0.2')
+
+    ifs = ET.SubElement(shape, 'IndexedFaceSet', DEF='PonchoGeo', creaseAngle="3.14")
+    # Use poncho_obj.data polygons (original topology). This assumes poncho topology does not change across frames.
+    coord_idx_chunks = []
+    for poly in poncho_obj.data.polygons:
+        inds = [str(i) for i in poly.vertices]
+        inds.append("-1")
+        coord_idx_chunks.append(" ".join(inds))
+    ifs.set('coordIndex', " ".join(coord_idx_chunks))
+
+    ET.SubElement(ifs, 'Coordinate', DEF='PonchoCoords', point=poncho_frames[0])
+    ci = ET.SubElement(scene, 'CoordinateInterpolator', DEF='CI_Poncho', key=time_str, keyValue=" ".join(poncho_frames))
+
+    ET.SubElement(scene, 'ROUTE', fromNode='Timer', fromField='fraction_changed', toNode='CI_Poncho', toField='set_fraction')
+    ET.SubElement(scene, 'ROUTE', fromNode='CI_Poncho', fromField='value_changed', toNode='PonchoCoords', toField='point')
+
+    # --- Finalize: write file ---
+    tree = ET.ElementTree(root)
+    ET.indent(tree, space="  ", level=0)
+    tree.write(filepath, encoding='utf-8', xml_declaration=True)
+    print("Done exporting X3D (fixed exporter).")
+
+    # cleanup evaluated mesh
+    eval_body.to_mesh_clear()
+
+# ------------------------------------------------------------------------
+# MAIN
+# ------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    try:
+        clean_scene()
+        armature = create_skeleton()
+        body = create_body_mesh(armature)
+        poncho = add_clothing_and_physics(body)
+        setup_animation_and_ik(armature)
+
+        out_path = os.path.join(os.path.expanduser("~"), EXPORT_FILENAME)
+        bpy.context.view_layer.update()
+
+        export_to_x3d(out_path, armature, body, poncho)
+        print("Script finished successfully.")
+
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()

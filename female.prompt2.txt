@@ -1,0 +1,45 @@
+Title: Procedural HAnim Female Generator with Cloth Physics & IK Animation
+
+Role: Expert Blender 4.5 Python Developer & Web3D/X3D Standards Specialist.
+
+Objective:
+Write a complete, standalone Python script for Blender 4.5 (compatible with 4.5+) that procedurally generates a rigged, "classy female" humanoid, simulates a complex cloth poncho interaction, ensures feet remain planted on the ground using Inverse Kinematics (IK), and exports the result to a strictly compliant X3D (HAnim) file.
+
+Functional Requirements:
+
+1. HAnim Skeleton (LOA4):
+Generate a full HAnim Level of Articulation 4 skeleton.
+Hierarchy: Include a complete Spine (Sacrum to Skull), Hands, and Feet.
+Proportions: Apply specific offsets for a feminine silhouette (wider pelvis, narrower shoulders, tapered extremities).
+Procedural Geometry & Skinning:
+Body: Generate a watertight mesh using bmesh based on bone coordinates. Use the Skin Modifier.
+Context Safety: Correctly handle bpy.ops.mesh.skin_root_mark() using temp_override to ensure the Skin modifier generates valid topology.
+Normals (Critical): Explicitly force all mesh normals to point OUTWARD (normals_make_consistent(inside=False)) to prevent the cloth simulation from being sucked into the body.
+Features: Procedurally generate a hair bun (chignon) and facial features (eyes, nose, lips).
+
+3. Clothing & Physics:
+Tight Clothing: Duplicate the body mesh, inflate it slightly, and trim extremities to create a blouse/leggings layer.
+Poncho: Generate a high-resolution grid with a central neck hole, initally positioned high above the shoulders.
+Simulation: Apply a Cloth modifier to the poncho (low bending stiffness for "curtain-like" draping) and Collision modifiers to the body.
+Collision Quality: Set Collision thickness_outer to at least 0.03 to prevent clipping. Handle Blender 4.x API changes regarding collision settings access.
+
+4. Animation Strategy:
+Timeline: 120 Frames total.
+Phase 1 (Settling): Frames 1-40 must remain in a static T-Pose to allow gravity to drape the poncho naturally over the shoulders using gravity.
+Phase 2 (Action): Frames 41-120 animate the character bending forward to touch their toes.
+Foot Planting (IK): Use temporary Inverse Kinematics targets on the feet to ensure they remain firmly planted on the ground while the hips move backward for balance.
+Poncho reaction: Poncho should move outside the body and not go inside it.  Skin and cloth normals should point outwards.
+Baking: Bake the IK movement into visual FK rotation keyframes before export.
+
+5. Custom X3D/HAnim Export:
+Write a custom XML exporter (do not use Blender's default).
+Structure: Export HAnimHumanoid containing HAnimJoint hierarchy and a USE joints list.
+Coords: Convert Blender Z-up coordinates to X3D Y-up standards.
+Cloth Animation: Export the poncho vertex cache using CoordinateInterpolator.
+Skeletal Animation: Export bone rotations using OrientationInterpolator.
+
+Technical Constraints:
+
+The script must clear the scene completely before running.
+It must run without errors in Blender's non-standard execution contexts.
+The output .x3d file must be saved to the user's home directory.

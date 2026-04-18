@@ -1,0 +1,41 @@
+Here is a highly detailed, comprehensive prompt that encapsulates the fully evolved architecture of this project. It incorporates all the strict Web3D/X3D 4.0 specifications, HAnim ISO standards, and the transition to a real-time native RigidBodyPhysics chainmail simulation.
+You can use this prompt to recreate the exact finalized script, share the architecture with other developers, or use it as a robust baseline for future Web3D AI generation tasks!
+Prompt Title: Procedural Strict HAnim Humanoid with Native X3D Rigid Body Physics "Chainmail" Poncho (Blender 4.x/5.0)
+Role: Expert Blender Python Developer (4.x/5.0 API) & Web3D/X3D Standards Specialist.
+Objective: Write a complete, standalone Python script for Blender that procedurally generates a rigged, animated female humanoid and exports it to a strictly compliant X3D 4.0 (HAnim) file. Do not use Blender's internal cloth physics or vertex baking. Instead, mathematically generate a native X3D Rigid Body Physics chainmail network directly within the custom XML exporter to simulate a dropping poncho in real-time within the browser.
+Step-by-Step Requirements:
+1. Scene Setup & Coordinate Conversion:
+Cleanup: Clear the scene of all objects, collections, and materials. Set timeline to 1-120 frames.
+Z-Up to Y-Up Mapping: In the exported X3D file, wrap the entire scene content (Humanoid, Physics, Visuals) inside a root <Transform DEF="Z_UP_TO_Y_UP" rotation="1 0 0 -1.5708">. This perfectly translates Blender's Z-up environment to X3D's Y-up standard.
+2. HAnim Skeleton (LOA4 Standard) & Animation:
+Skeleton: Procedurally generate a standard HAnim LOA4 skeleton (~148 joints). Adjust bone proportions for a feminine hourglass figure.
+Bone Roll: Enforce roll = 0 for all bones so local axes are mathematically predictable.
+Animation (Forward Bend):
+Frames 1-60: Neutral T-Pose (allowing the X3D physics cloth to drop and settle on the shoulders).
+Frames 61-120: Animate the humanoid bending forward at the waist. Because bone roll is 0, rotate the spine/sacrum around their Local Z-axis. Counter-rotate the thighs so legs remain vertical. Shift the Root bone backward dynamically to maintain center-of-mass balance.
+3. Procedural Skin & Geometry:
+Wrap the armature in a procedural watertight skin using bmesh.ops.create_cone aligned to bone vectors. Apply Voxel Remesh (0.02m) and Smooth modifiers.
+Bind the skin to the armature using Automatic Weights.
+4. Strict HAnim Compliance & Skeletal Export:
+Write a custom XML exporter. Do not use Blender's default exporter.
+Skin Export: Extract the skin mesh vertices and polygons. Export them inside a <Shape containerField="skin"> element located directly inside the <HAnimHumanoid> node. (Do not use a <skin> wrapper node).
+Joint Hierarchy: Root joint uses containerField="skeleton". Child joints use containerField="children".
+Vertex Weights: Map the Blender vertex groups to skinCoordIndex and skinCoordWeight inside the HAnimJoint tags.
+USE Definitions: After the skeleton, list <HAnimJoint USE="..." containerField="joints"/> and <HAnimSegment USE="..." containerField="segments"/> for all created elements.
+Skeletal Animation: Output an <OrientationInterpolator> for every moving bone (using Axis-Angle format) and route them via a <TimeSensor>.
+5. Native X3D Rigid Body Physics Architecture:
+Include <head><component name="RigidBodyPhysics" level="2"/></head>.
+Kinematic Proxies (Strict Hierarchy): For bones acting as colliders (Skull, Chest, Waist, Pelvis, Clavicles), you cannot put shapes directly into an HAnimJoint. You must adhere to this exact nesting:
+HAnimJoint -> HAnimSegment -> Transform -> CollidableShape -> <Shape containerField="shape"> (Use Spheres).
+Kinematic Bodies: Create a <RigidBodyCollection gravity="0 0 -9.81">. Register the kinematic CollidableShape proxies as <RigidBody mass="0"> nodes so they push the cloth but fall naturally with the skeletal animation.
+6. Procedural Chainmail Poncho (Grid Network):
+Grid Calculation: Using Python, mathematically define a 12x12 grid of coordinates at Z=1.55m (neck height). Omit points within a 0.16m radius of the center for the neck hole.
+Visual Shapes: For each valid grid point, create a visible <Transform> containing a <Shape><Sphere>.
+Physics Nodes: Inside the RigidBodyCollection, generate a <RigidBody> for each grid point.
+Use mass="0.05".
+Syntax Constraint: Use linearDampingFactor and angularDampingFactor (do not use legacy names).
+Inside the RigidBody, add a <CollidableShape> containing a <Shape containerField="shape"> (Spheres).
+Links/Springs: Generate <BallJoint> nodes connecting every adjacent grid node (Right and Bottom neighbors) to form a flexible web.
+Routing: Write <ROUTE> tags connecting the position_changed and orientation_changed fields of the physics <RigidBody> nodes to the set_translation and set_rotation fields of their corresponding visual <Transform> nodes.
+Execution Constraints:
+The script must be entirely standalone, requiring no external assets. It must execute cleanly in Blender 4.x/5.0, proceduralizing the meshes and math, and write the final compliant .x3d file to the user's home directory.

@@ -1,0 +1,58 @@
+1. Design Document
+1.1 Project Overview
+Title: Procedural HAnim Female Generator with Cloth Physics & IK Animation
+Platform: Blender 4.5+ (Python API)
+Output Format: X3D (Extensible 3D) with HAnim 2.0 compliance.
+Objective:
+To create a fully automated, standalone Python script that generates a rigged humanoid female character, creates a physics-enabled garment (poncho), simulates dynamic interaction, and exports the resulting geometry and animation to a web-ready X3D standard format.
+1.2 System Architecture
+The system operates as a linear procedural pipeline within Blender’s data context.
+Pipeline Stages:
+Initialization: Scene sanitation and context preparation.
+Rigging: HAnim LOA4 skeleton generation.
+Modeling: Procedural mesh generation via bmesh and Skin Modifier.
+Simulation Setup: Cloth and Collision physics parametrization.
+Animation: Hybrid IK/FK keyframing (Settling phase + Action phase).
+Baking & Export: Frame-by-frame data capture and XML serialization.
+1.3 Component Design
+1.3.1 Skeleton Generator (create_skeleton)
+Standard: HAnim Level of Articulation 4 (LOA4) subset.
+Logic:
+Creates a hierarchical bone structure.
+Applies specific vector offsets to create a feminine silhouette (wider pelvic girdle, narrower clavicles, tapered extremities).
+IK Setup: Adds non-deforming "Target Bones" (IK_L_Foot, IK_R_Foot) detached from the hierarchy to serve as Inverse Kinematics targets.
+1.3.2 Body Geometry Engine (create_body_mesh)
+Technique: Trace-and-Skin.
+Process:
+Iterates through the generated armature.
+Creates bmesh vertices at bone heads/tails.
+Assigns specific radii to vertices (e.g., larger for hips/chest, smaller for wrists/ankles).
+Topology Fix: Bridges discontinuous chains (hips to spine, shoulders to spine) to ensure a single manifold mesh.
+Modifier Stack: Applies Skin modifier followed by Subdivision Surface.
+Normal Correction: Explicitly recalculates normals outside (normals_make_consistent(inside=False)) to prevent physics calculation errors.
+1.3.3 Clothing & Physics Engine (add_clothing_and_physics)
+Body Layer: Adds a Collision modifier to the body mesh.
+Critical Setting: thickness_outer = 0.03 to create a buffer zone preventing mesh interpenetration.
+Garment Layer (Poncho):
+Generates a high-density plane (Grid).
+Procedurally removes center vertices to create a neck hole.
+Rotates 45° for aesthetic draping.
+Applies Cloth modifier with low bending stiffness (Silk/Cotton preset behavior).
+1.3.4 Animation Controller (setup_animation_and_ik)
+Timeline Strategy:
+Frames 1-40 (Settle): Character holds T-Pose. Gravity allows the cloth to simulate and drape naturally over shoulders.
+Frames 41-120 (Action): Character performs a "Toe Touch".
+IK Logic:
+Legs utilize Inverse Kinematics targeting the static IK_Foot bones.
+As the Hips (H_ROOT) move downward and backward, the feet remain strictly locked to world coordinates (0,0,0).
+1.3.5 HAnim/X3D Exporter (export_to_x3d)
+Coordinate Conversion: Transforms Blender Z-Up/Right-Handed to X3D Y-Up/Right-Handed (x=x, y=z, z=-y).
+Data Serialization:
+Skeleton: Maps Blender bones to HAnimJoint nodes.
+Skeletal Animation: Bakes bone rotation matrices to OrientationInterpolator nodes.
+Vertex Animation: Bakes the simulated Poncho mesh per frame to a CoordinateInterpolator (Vertex Cache).
+1.4 Technical Constraints & Decisions
+Context Safety: The script avoids operators like bpy.ops.mesh.skin_root_mark which are unstable in script execution, relying instead on Blender's heuristic root detection.
+API Compatibility: Explicit handling of Blender 4.x changes, specifically accessing modifier.settings for Collision attributes rather than direct modifier access.
+Self-Contained: No external assets (textures/models) are required; everything is mathematically generated.
+

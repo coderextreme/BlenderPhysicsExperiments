@@ -1,0 +1,82 @@
+Here is a comprehensive, highly detailed prompt that encapsulates the entire project, including the specific API fixes, physics optimizations, and strict standards we implemented. You can use this prompt to recreate the project, share it with others, or use it as a baseline for future AI tasks.
+
+Prompt Title: Procedural HAnim Humanoid with Cloth Physics & Custom X3D Exporter (Blender 4.x/5.0)
+
+Role: Expert Blender Python Developer (4.x/5.0 API) & Web3D/X3D Standards Specialist.
+
+Objective: Write a complete, standalone Python script for Blender that procedurally generates a rigged, animated female humanoid, simulates a complex cloth poncho interacting with the body, and exports the final baked result to a strictly compliant X3D (HAnim) file using a custom XML writer.
+
+Step-by-Step Requirements:
+
+1. Scene Setup & Cleanup:
+
+Clear the scene of all objects, meshes, armatures, and materials.
+
+Set the timeline to 120 frames and standard gravity (-9.81 on Z).
+
+2. HAnim Skeleton (LOA4 Standard):
+
+Procedurally generate a strict HAnim Level of Articulation 4 skeleton (~148 joints).
+
+Include a full spine (sacrum to skull), full hands (carpals to distal phalanges), and full feet.
+
+Proportions: Adjust bone offsets to create a feminine "hourglass" figure (wider hips/pelvis, defined waist) and ensure the clavicle/scapula span is wide enough (~0.44m) to act as a physical ledge to catch clothing.
+
+3. Procedural Skin & Facial Features:
+
+Body: Wrap the armature in a procedural watertight skin using bmesh.ops.create_cone aligned to bone vectors. Use varied radii based on bone names (e.g., 0.16m for pelvis, 0.14m for bust, 0.08m for clavicles). Apply a Voxel Remesh (0.015m) and Smooth modifier to fuse it into a perfectly continuous, manifold surface.
+
+Face & Hair: Procedurally generate spheres for eyes and ears, a cone for the nose, and a torus for lips. Create a long hairstyle using a manipulated sphere (pulling the back/bang vertices down).
+
+Strict Hierarchy: Parent all facial features and hair rigidly to the hanim_skull bone (do not skin them).
+
+4. Clothing & Shoes:
+
+Blouse & Pants: Duplicate the skin mesh, delete vertices outside specific Z-bounds, inflate them slightly using normal displacement, and add a Solidify modifier.
+
+Shoes: Generate high-heel geometry parented directly to the foot (talus) bones.
+
+5. The Poncho & Cloth Physics:
+
+Pre-Threading: Create a high-resolution grid (65x65) for a poncho. Cut a circular hole in the center (radius ~0.14m). Generate the poncho exactly at neck height (Z=1.55m) so the head is already perfectly poking through the hole on Frame 1.
+
+Cloth Settings: Apply a Cloth modifier. Configure it for a "Silk/Velvet" feel: low bending stiffness (0.1), use internal friction, and enable self-collision.
+
+Avoid API Errors: Do not use deprecated damping properties (like velocity_damping or use_internal_friction). Stick to modern Blender 4.x/5.0 safe attributes.
+
+6. Rigging & Collisions:
+
+Bind the Skin, Blouse, and Pants to the armature using Automatic Weights.
+
+Colliders: Apply Collision modifiers to the Skin, Blouse, Pants, and a ground Floor plane.
+
+Friction Constraint: To ensure the poncho does not slide off the body, set cloth_friction = 35.0 on the body colliders and 50.0 on the floor. Define an outer thickness boundary (0.03m) to prevent skin clipping. (Note: use cloth_friction on the collision settings, not friction).
+
+7. Animation Mechanics:
+
+Frames 1-60: Neutral T-Pose. This allows the cloth to calculate its drape and settle beautifully over the shoulders.
+
+Frames 61-120: Animate the humanoid bending forward at the waist to touch her toes.
+
+IK/FK Mechanics: Shift the Root bone backward dynamically to maintain center-of-mass balance. Use cumulative rotation on the spine and pelvis. Apply counter-rotation to the thighs so the legs remain perfectly vertical and the feet stay planted.
+
+8. Physics Baking:
+
+Write a safe baking function. Update the frame bounds directly on the cloth modifier (cloth_mod.point_cache.frame_start/frame_end), and execute the bake using a bpy.context.temp_override to prevent context errors in headless/scripted execution.
+
+9. X3D (HAnim) Custom Exporter:
+
+Do NOT use Blender's default X3D exporter. Write a custom function that outputs raw XML strictly adhering to the Web3D standard.
+
+Skeleton Structure: Export an <HAnimHumanoid> containing nested <HAnimJoint> nodes. The root joint must have containerField="skeleton", and all children must have containerField="children".
+
+USE Definitions: After the skeleton hierarchy, you must list a <HAnimJoint USE="bone_name" containerField="joints"/> for every bone.
+
+Skin Weights: Map Blender vertex groups to skinCoordIndex and skinCoordWeight attributes within the HAnimJoint tags.
+
+Rigid Animation: Calculate Quaternions to Axis-Angle format. Output an <OrientationInterpolator> for every bone and route it using a <TimeSensor>.
+
+Vertex Cloth Animation: Because cloth cannot be exported as rigid bones, capture the evaluated mesh state (using the Dependency Graph) for all 120 frames. Export this as a massive <CoordinateInterpolator> and route it to the Poncho's <Coordinate> node to ensure true 3D cloth playback in browser.
+
+Execution Constraints:
+The script must run perfectly on execution without throwing API Attribute errors. It must clear the scene, build the entire rig and geometry, simulate and bake the physics, and write the final .x3d file to the user's home directory.
